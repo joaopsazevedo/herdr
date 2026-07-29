@@ -369,6 +369,7 @@ fn restore_workspace(
             history.and_then(|history| history.tabs.get(idx)),
             tab_number,
             &workspace_id,
+            &snap.extra_env,
             rows,
             cols,
             runtime_context,
@@ -425,6 +426,7 @@ fn restore_workspace(
             cached_git_ahead_behind: None,
             cached_git_space: None,
             worktree_space: snap.worktree_space.clone(),
+            extra_env: snap.extra_env.clone(),
             metadata_tokens: crate::metadata_tokens::MetadataTokens::default(),
             metadata_token_sequences: HashMap::new(),
             public_pane_numbers,
@@ -493,6 +495,7 @@ fn restore_tab(
     history: Option<&TabHistorySnapshot>,
     number: usize,
     workspace_id: &str,
+    workspace_extra_env: &[(String, String)],
     rows: u16,
     cols: u16,
     runtime_context: &RestoreRuntimeContext<'_>,
@@ -571,7 +574,7 @@ fn restore_tab(
             .map(String::as_str);
         let launch_env = public_pane_id
             .map(|pane_id| {
-                PaneLaunchEnv::from_extra(Vec::new()).with_identity(
+                PaneLaunchEnv::from_extra(workspace_extra_env.to_vec()).with_identity(
                     workspace_id.to_string(),
                     crate::workspace::public_tab_id_for_number(workspace_id, number),
                     pane_id.to_string(),
@@ -1561,6 +1564,7 @@ mod tests {
                     root_pane: Some(0),
                 }],
                 active_tab: 0,
+                extra_env: Vec::new(),
             }],
             active: Some(0),
             selected: 0,
@@ -1656,6 +1660,7 @@ mod tests {
                     root_pane: Some(10),
                 }],
                 active_tab: 0,
+                extra_env: Vec::new(),
             }],
             active: Some(0),
             selected: 0,
@@ -1765,6 +1770,7 @@ mod tests {
                     },
                 ],
                 active_tab: 3,
+                extra_env: Vec::new(),
             }],
             active: Some(0),
             selected: 0,
@@ -1827,6 +1833,7 @@ mod tests {
                 root_pane: Some(10),
             }],
             active_tab: 0,
+            extra_env: Vec::new(),
         };
         let mut next_public_pane_number = 1;
 
@@ -1877,6 +1884,7 @@ mod tests {
                     root_pane: Some(0),
                 }],
                 active_tab: 0,
+                extra_env: Vec::new(),
             }],
             active: Some(0),
             selected: 0,
@@ -2217,6 +2225,7 @@ mod tests {
                     root_pane: Some(0),
                 }],
                 active_tab: 0,
+                extra_env: Vec::new(),
             }],
             active: Some(0),
             selected: 0,

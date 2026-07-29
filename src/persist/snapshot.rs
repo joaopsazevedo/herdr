@@ -68,6 +68,10 @@ pub struct WorkspaceSnapshot {
     pub tabs: Vec<TabSnapshot>,
     #[serde(default)]
     pub active_tab: usize,
+    /// Workspace-level launch environment, so restored panes inherit the
+    /// `--env` values supplied at workspace creation. Older snapshots omit this.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extra_env: Vec<(String, String)>,
 }
 
 #[derive(Deserialize)]
@@ -175,6 +179,7 @@ impl From<LegacyWorkspaceSnapshot> for WorkspaceSnapshot {
             next_public_tab_number: 0,
             tabs: vec![tab],
             active_tab: 0,
+            extra_env: Vec::new(),
         }
     }
 }
@@ -317,6 +322,7 @@ fn capture_workspace(
         next_public_tab_number: ws.next_public_tab_number,
         tabs,
         active_tab: ws.active_tab,
+        extra_env: ws.extra_env.clone(),
     }
 }
 
@@ -654,6 +660,27 @@ mod tests {
     }
 
     #[test]
+    fn workspace_extra_env_survives_snapshot_round_trip() {
+        let mut state = state_with_workspaces(&["env"]);
+        state.workspaces[0].extra_env = vec![("MY_VAR".to_string(), "foo".to_string())];
+
+        let snap = capture_from_state(&state);
+        assert_eq!(
+            snap.workspaces[0].extra_env,
+            vec![("MY_VAR".to_string(), "foo".to_string())],
+            "capture must record workspace-level launch env"
+        );
+
+        let json = serde_json::to_string_pretty(&snap).unwrap();
+        let restored = parse_snapshot(&json).unwrap();
+        assert_eq!(
+            restored.workspaces[0].extra_env,
+            vec![("MY_VAR".to_string(), "foo".to_string())],
+            "workspace launch env must survive a save/restore round trip"
+        );
+    }
+
+    #[test]
     fn round_trip_empty_session() {
         let snap = SessionSnapshot {
             version: SNAPSHOT_VERSION,
@@ -746,6 +773,7 @@ mod tests {
                     root_pane: Some(0),
                 }],
                 active_tab: 0,
+                extra_env: Vec::new(),
             }],
             active: Some(0),
             selected: 0,
@@ -1447,6 +1475,7 @@ mod tests {
                     root_pane: Some(0),
                 }],
                 active_tab: 0,
+                extra_env: Vec::new(),
             }],
             active: Some(0),
             selected: 0,
