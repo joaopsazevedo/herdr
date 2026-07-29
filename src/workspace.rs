@@ -194,6 +194,10 @@ pub struct Workspace {
     pub(crate) cached_git_space: Option<GitSpaceMetadata>,
     /// Explicit Herdr-managed worktree grouping provenance.
     pub worktree_space: Option<WorktreeSpaceMembership>,
+    /// Workspace-level launch environment (e.g. `workspace create --env KEY=VALUE`).
+    /// Applied to every pane spawned in this workspace so splits, new tabs, and
+    /// restored panes inherit it, not just the first pane.
+    pub(crate) extra_env: Vec<(String, String)>,
     pub(crate) metadata_tokens: crate::metadata_tokens::MetadataTokens,
     pub(crate) metadata_token_sequences: HashMap<String, u64>,
     /// Public pane numbers within this workspace. Closed pane numbers are not reused.
@@ -260,6 +264,7 @@ impl Workspace {
             cached_git_ahead_behind: None,
             cached_git_space,
             worktree_space: None,
+            extra_env: Vec::new(),
             metadata_tokens: crate::metadata_tokens::MetadataTokens::default(),
             metadata_token_sequences: HashMap::new(),
             public_pane_numbers,
@@ -360,7 +365,7 @@ impl Workspace {
         extra_env: Vec<(String, String)>,
     ) -> std::io::Result<(Self, TerminalState, TerminalRuntime)> {
         let id = generate_workspace_id();
-        let launch_env = PaneLaunchEnv::from_extra(extra_env).with_identity(
+        let launch_env = PaneLaunchEnv::from_extra(extra_env.clone()).with_identity(
             id.clone(),
             public_tab_id_for_number(&id, 1),
             public_pane_id_for_number(&id, 1),
@@ -412,6 +417,7 @@ impl Workspace {
                 cached_git_ahead_behind: None,
                 cached_git_space,
                 worktree_space: None,
+                extra_env,
                 metadata_tokens: crate::metadata_tokens::MetadataTokens::default(),
                 metadata_token_sequences: HashMap::new(),
                 public_pane_numbers,
@@ -982,7 +988,11 @@ impl Workspace {
         pane_number: usize,
         extra_env: Vec<(String, String)>,
     ) -> PaneLaunchEnv {
-        PaneLaunchEnv::from_extra(extra_env).with_identity(
+        // Workspace-level env first, caller-supplied env last so per-spawn
+        // values override the workspace defaults on key collisions.
+        let mut merged = self.extra_env.clone();
+        merged.extend(extra_env);
+        PaneLaunchEnv::from_extra(merged).with_identity(
             self.id.clone(),
             public_tab_id_for_number(&self.id, tab_number),
             public_pane_id_for_number(&self.id, pane_number),
@@ -1201,6 +1211,7 @@ impl Workspace {
             cached_git_ahead_behind: None,
             cached_git_space: None,
             worktree_space: None,
+            extra_env: Vec::new(),
             metadata_tokens: crate::metadata_tokens::MetadataTokens::default(),
             metadata_token_sequences: HashMap::new(),
             public_pane_numbers,
@@ -1427,6 +1438,47 @@ impl Workspace {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn new_pane_inherits_workspace_launch_env() {
+        let mut ws = Workspace::test_new("env");
+        ws.extra_env = vec![("MY_VAR".to_string(), "foo".to_string())];
+
+        // Mirrors a split / new tab: callers pass no per-spawn env, so the new
+        // pane must still pick up the workspace-level env.
+        let launch_env = ws.launch_env_for_new_pane(1, 2, Vec::new());
+
+        assert_eq!(
+            launch_env.extra_pairs(),
+            &[("MY_VAR".to_string(), "foo".to_string())]
+        );
+    }
+
+    #[test]
+    fn workspace_without_env_yields_empty_launch_env() {
+        let ws = Workspace::test_new("env");
+        let launch_env = ws.launch_env_for_new_pane(1, 2, Vec::new());
+        assert!(launch_env.extra_pairs().is_empty());
+    }
+
+    #[test]
+    fn per_spawn_env_is_applied_after_workspace_env() {
+        let mut ws = Workspace::test_new("env");
+        ws.extra_env = vec![("MY_VAR".to_string(), "workspace".to_string())];
+
+        let launch_env =
+            ws.launch_env_for_new_pane(1, 2, vec![("MY_VAR".to_string(), "caller".to_string())]);
+
+        // Workspace env first, caller env last: apply order makes the caller
+        // value win on collision while both are recorded.
+        assert_eq!(
+            launch_env.extra_pairs(),
+            &[
+                ("MY_VAR".to_string(), "workspace".to_string()),
+                ("MY_VAR".to_string(), "caller".to_string()),
+            ]
+        );
+    }
 
     #[test]
     fn generated_workspace_ids_are_short_base32_handles() {

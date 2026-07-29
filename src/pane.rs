@@ -179,6 +179,13 @@ impl PaneLaunchEnv {
         self.identity = PaneLaunchIdentity::OmitPane;
         self
     }
+
+    /// Extra env pairs in application order. Later entries win when applied to
+    /// the spawned command, mirroring [`apply_pane_launch_env`].
+    #[cfg(test)]
+    pub(crate) fn extra_pairs(&self) -> &[(String, String)] {
+        &self.extra
+    }
 }
 
 fn apply_pane_launch_env(cmd: &mut CommandBuilder, launch_env: &PaneLaunchEnv) {
